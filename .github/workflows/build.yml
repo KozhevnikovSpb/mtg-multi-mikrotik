@@ -1,0 +1,50 @@
+name: Build MikroTik ARMv7 image
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify mtg-multi ARMv7
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=1.15.0
+          URL="https://github.com/MHSanaei/mtg-multi/releases/download/v${VERSION}/mtg-multi-${VERSION}-linux-armv7.tar.gz"
+          curl -fL "$URL" -o mtg.tar.gz
+          echo "b74c5297ed4018809d90ea7247ad6a6179d02eddbbf9a39948e56cf6b0a205c6  mtg.tar.gz" | sha256sum -c -
+          mkdir rootfs
+          tar -xzf mtg.tar.gz -C rootfs
+          find rootfs -maxdepth 2 -type f -print
+          MTG_BIN="$(find rootfs -type f -name mtg -o -name mtg-multi | head -n1)"
+          test -n "$MTG_BIN"
+          cp "$MTG_BIN" ./mtg
+          chmod 0755 ./mtg
+          file ./mtg
+      - name: Create Dockerfile
+        shell: bash
+        run: |
+          cat > Dockerfile.build <<'EOF'
+          FROM alpine:3.22 AS certs
+          RUN apk add --no-cache ca-certificates
+          FROM scratch
+          COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+          COPY mtg /mtg
+          ENTRYPOINT ["/mtg"]
+          CMD ["run", "/config/config.toml"]
+          EOF
+      - name: Build ARMv7 image
+        run: docker buildx build --platform linux/arm/v7 --load -f Dockerfile.build -t mtg-multi-mikrotik:1.15.0 .
+      - name: Verify image architecture
+        run: docker image inspect mtg-multi-mikrotik:1.15.0 --format '{{.Os}}/{{.Architecture}}/{{.Variant}}'
+      - name: Export image
+        run: docker save mtg-multi-mikrotik:1.15.0 -o mtg-multi-mikrotik-armv7.tar
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mtg-multi-mikrotik-armv7
+          path: mtg-multi-mikrotik-armv7.tar
+          if-no-files-found: error
