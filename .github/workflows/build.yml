@@ -2,6 +2,10 @@ name: Build MikroTik ARMv7 image
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/build.yml"
 
 jobs:
   build:
@@ -19,14 +23,13 @@ jobs:
           mkdir rootfs
           tar -xzf mtg.tar.gz -C rootfs
           find rootfs -maxdepth 2 -type f -print
-          MTG_BIN="$(find rootfs -type f -name mtg -o -name mtg-multi | head -n1)"
+          MTG_BIN="$(find rootfs -type f \( -name mtg -o -name mtg-multi \) | head -n1)"
           test -n "$MTG_BIN"
           cp "$MTG_BIN" ./mtg
           chmod 0755 ./mtg
           file ./mtg
-      - name: Prepare CA certificates
-        run: cp /etc/ssl/certs/ca-certificates.crt ./ca-certificates.crt
-      - name: Create Dockerfile
+          cp /etc/ssl/certs/ca-certificates.crt ./ca-certificates.crt
+      - name: Create minimal Dockerfile
         shell: bash
         run: |
           cat > Dockerfile.build <<'EOF'
@@ -39,12 +42,17 @@ jobs:
       - name: Build ARMv7 image
         run: docker buildx build --platform linux/arm/v7 --load -f Dockerfile.build -t mtg-multi-mikrotik:1.15.0 .
       - name: Verify image architecture
-        run: docker image inspect mtg-multi-mikrotik:1.15.0 --format '{{.Os}}/{{.Architecture}}/{{.Variant}}'
+        run: |
+          test "$(docker image inspect mtg-multi-mikrotik:1.15.0 --format '{{.Os}}/{{.Architecture}}/{{.Variant}}')" = "linux/arm/v7"
       - name: Export image
         run: docker save mtg-multi-mikrotik:1.15.0 -o mtg-multi-mikrotik-armv7.tar
+      - name: SHA-256
+        run: sha256sum mtg-multi-mikrotik-armv7.tar | tee mtg-multi-mikrotik-armv7.tar.sha256
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: mtg-multi-mikrotik-armv7
-          path: mtg-multi-mikrotik-armv7.tar
+          path: |
+            mtg-multi-mikrotik-armv7.tar
+            mtg-multi-mikrotik-armv7.tar.sha256
           if-no-files-found: error
