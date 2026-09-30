@@ -24,14 +24,14 @@ jobs:
           cp "$MTG_BIN" ./mtg
           chmod 0755 ./mtg
           file ./mtg
+      - name: Prepare CA certificates
+        run: cp /etc/ssl/certs/ca-certificates.crt ./ca-certificates.crt
       - name: Create Dockerfile
         shell: bash
         run: |
           cat > Dockerfile.build <<'EOF'
-          FROM alpine:3.22 AS certs
-          RUN apk add --no-cache ca-certificates
           FROM scratch
-          COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+          COPY ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
           COPY mtg /mtg
           ENTRYPOINT ["/mtg"]
           CMD ["run", "/config/config.toml"]
